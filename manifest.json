@@ -1,0 +1,22 @@
+{
+  "name": "G7KAIH - SMAN 2 Banda Aceh",
+  "short_name": "G7KAIH",
+  "description": "Gerakan 7 Kebiasaan Anak Indonesia Hebat",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#15803D",
+  "theme_color": "#15803D",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
