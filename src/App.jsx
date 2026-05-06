@@ -62,10 +62,11 @@ async function gasRequest(action, body={}) {
 async function apiSaveJurnal(user, tanggal, entry) {
   // URL sudah terpasang
   await gasRequest("saveJurnal", {
-    nis:    user.nis,
+    nisn:   user.nisn || "",
+    nis:    user.nis  || "",
     nama:   user.name,
     kelas:  user.kelas,
-    gender: user.gender,
+    gender: user.gender || "",
     tanggal,
     entry,
   });
@@ -73,7 +74,7 @@ async function apiSaveJurnal(user, tanggal, entry) {
 
 async function apiGetJurnal(user) {
   // URL sudah terpasang
-  const res = await gasRequest("getJurnal", { nis: user.nis });
+  const res = await gasRequest("getJurnal", { nis: user.nis, nisn: user.nisn });
   return res.status==="ok" ? res.data : {};
 }
 
@@ -203,8 +204,15 @@ function Login({ onLogin, siswaList, guruList }) {
 }
 
 /* ── BERANDA ───────────────────────────────────────────────── */
-function Beranda({ user, journals, goJurnal, siswaList }) {
+function Beranda({ user, journals, goJurnal, siswaList, refreshJournals }) {
   const now=new Date(), y=now.getFullYear(), mo=now.getMonth();
+
+  // Guru: refresh data jurnal saat buka beranda
+  useEffect(() => {
+    if (user.role === "guru" && refreshJournals) {
+      refreshJournals();
+    }
+  }, []);
   const days=daysInMonth(y,mo), tk=todayKey();
   const myJ = journals[user.id] || {};
 
@@ -847,11 +855,26 @@ function downloadHTML(user, journals, y, mo, siswaList) {
 }
 
 /* ── KELAS (Guru) ──────────────────────────────────────────── */
-function Kelas({ user, journals, siswaList }) {
+function Kelas({ user, journals, siswaList, refreshJournals }) {
   const now=new Date(), y=now.getFullYear(), mo=now.getMonth();
   const days    = daysInMonth(y, mo);
   const students= (siswaList||[]).filter(s => s.kelas === user.kelas);
   const bulan   = MONTHS[mo];
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  // Auto-refresh saat halaman kelas dibuka
+  useEffect(() => {
+    handleRefresh();
+  }, []);
+
+  async function handleRefresh() {
+    if (!refreshJournals) return;
+    setRefreshing(true);
+    await refreshJournals();
+    setRefreshing(false);
+    setLastRefresh(new Date().toLocaleTimeString("id-ID"));
+  }
 
   // Summary stats
   let totalFil=0;
@@ -867,11 +890,21 @@ function Kelas({ user, journals, siswaList }) {
   return (
     <div style={{ padding:"14px 14px 100px" }}>
       {/* Header */}
-      <div style={{ marginBottom:14 }}>
-        <h3 style={{ fontWeight:900, fontSize:15, color:TX, margin:"0 0 4px" }}>
-          📊 Rekap Kelas {user.kelas}
-        </h3>
-        <p style={{ fontSize:11, color:MU, margin:0 }}>{bulan} {y} · Wali Kelas: {user.name}</p>
+      <div style={{ marginBottom:14, display:"flex", alignItems:"flex-start", justifyContent:"space-between" }}>
+        <div>
+          <h3 style={{ fontWeight:900, fontSize:15, color:TX, margin:"0 0 4px" }}>
+            📊 Rekap Kelas {user.kelas}
+          </h3>
+          <p style={{ fontSize:11, color:MU, margin:0 }}>{bulan} {y} · Wali Kelas: {user.name}</p>
+          {lastRefresh && <p style={{ fontSize:10, color:"#22C55E", margin:"3px 0 0" }}>✅ Diperbarui pukul {lastRefresh}</p>}
+        </div>
+        <button onClick={handleRefresh} disabled={refreshing}
+          style={{ background:refreshing?"#9CA3AF":"linear-gradient(90deg,"+G+","+T+")",
+            color:"#fff", border:"none", borderRadius:10, padding:"8px 14px",
+            fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:12, cursor:"pointer",
+            display:"flex", alignItems:"center", gap:5, flexShrink:0 }}>
+          {refreshing ? "⏳ Memuat..." : "🔄 Refresh"}
+        </button>
       </div>
 
       {/* Class summary cards */}
@@ -1015,8 +1048,9 @@ export default function App() {
       } else {
         const data = await apiGetAllJurnal(u.kelas);
         const mapped = {};
-        Object.entries(data).forEach(([nis, jurnals]) => {
-          const siswa = siswaList.find(s => s.nis === nis);
+        Object.entries(data).forEach(([key, jurnals]) => {
+          // Coba match dengan NISN dulu, lalu NIS
+          const siswa = siswaList.find(s => s.nisn === key || s.nis === key);
           if (siswa) mapped[siswa.id] = jurnals;
         });
         if (Object.keys(mapped).length > 0) setJournals(mapped);
@@ -1026,6 +1060,20 @@ export default function App() {
   }
   function logout()    { setUser(null); setPage("beranda"); setJournals({}); }
   function goJurnal(d) { setInitDate(d || todayKey()); setPage("jurnal"); }
+
+  // Guru: muat ulang semua jurnal kelas
+  async function refreshJournals() {
+    if (!user || user.role !== "guru") return;
+    try {
+      const data = await apiGetAllJurnal(user.kelas);
+      const mapped = {};
+      Object.entries(data).forEach(([key, jurnals]) => {
+        const siswa = siswaList.find(s => s.nisn === key || s.nis === key);
+        if (siswa) mapped[siswa.id] = jurnals;
+      });
+      if (Object.keys(mapped).length > 0) setJournals(mapped);
+    } catch(e) { console.error("Refresh error:", e); }
+  }
 
   // Tampilkan loading screen saat data belum siap
   if (!dataReady) return (
@@ -1098,9 +1146,9 @@ export default function App() {
             </div>
           </div>
         )}
-        {page==="beranda" && <Beranda user={user} journals={journals} goJurnal={goJurnal} siswaList={siswaList}/>}
+        {page==="beranda" && <Beranda user={user} journals={journals} goJurnal={goJurnal} siswaList={siswaList} refreshJournals={refreshJournals}/>}
         {page==="jurnal"  && user.role==="siswa" && <Jurnal user={user} journals={journals} setJournals={setJournals} initDate={initDate}/>}
-        {page==="kelas"   && user.role==="guru"  && <Kelas  user={user} journals={journals} siswaList={siswaList}/>}
+        {page==="kelas"   && user.role==="guru"  && <Kelas  user={user} journals={journals} siswaList={siswaList} refreshJournals={refreshJournals}/>}
       </div>
 
       {/* BOTTOM NAV */}
