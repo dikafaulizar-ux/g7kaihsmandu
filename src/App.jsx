@@ -44,7 +44,7 @@ const HABITS = [
 
 // ── GOOGLE SHEETS API ───────────────────────────────────────────
 // Ganti URL ini setelah deploy Apps Script
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyXAwL6aCnMtN-aXeD26g8NHstc9W6wAyYZIq7BTz-xOLfhKQNi2IjtR2nCOA_2Yyg/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwOcvF8nVRs9ex9iUYkqkUdbFcSJjBKF_1IZH043hmZQhFmswmrb4Kdsli7TjvZoOPz/exec";
 
 async function gasRequest(action, body={}) {
   try {
