@@ -44,26 +44,52 @@ const HABITS = [
 
 // ── GOOGLE SHEETS API ───────────────────────────────────────────
 // Ganti URL ini setelah deploy Apps Script
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwOcvF8nVRs9ex9iUYkqkUdbFcSJjBKF_1IZH043hmZQhFmswmrb4Kdsli7TjvZoOPz/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwOH2qsKhmZhHueOhASuw8xMj4x8fOT8L7zZ95qI8jNc0rqhM-cbCWwUq_4MplcTSs/exec";
 
 async function gasRequest(action, body={}) {
   try {
-    const res = await fetch(GAS_URL, {
-      method:"POST",
-      body: JSON.stringify({ action, ...body }),
+    // Pakai GET + URLSearchParams — lebih compatible dengan Apps Script CORS
+    const params = new URLSearchParams({ action });
+    Object.entries(body).forEach(([k,v]) => {
+      params.append(k, typeof v === "object" ? JSON.stringify(v) : String(v||""));
     });
-    return await res.json();
+    const res = await fetch(GAS_URL+"?"+params.toString(), {
+      method: "GET",
+      redirect: "follow",
+    });
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch(e) { console.error("Parse error:", text); return { status:"error" }; }
   } catch(e) {
     console.error("GAS Error:", e);
     return { status:"error" };
   }
 }
 
+// Untuk saveJurnal pakai POST karena data besar
+async function gasPostRequest(action, body={}) {
+  try {
+    const params = new URLSearchParams({ action });
+    const res = await fetch(GAS_URL+"?"+params.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action, ...body }),
+      redirect: "follow",
+    });
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch(e) { return { status:"error" }; }
+  } catch(e) {
+    console.error("GAS POST Error:", e);
+    return { status:"error" };
+  }
+}
+
 async function apiSaveJurnal(user, tanggal, entry) {
-  // URL sudah terpasang
-  await gasRequest("saveJurnal", {
-    nisn:   user.nisn || "",
-    nis:    user.nis  || "",
+  // Pakai POST untuk data besar
+  await gasPostRequest("saveJurnal", {
+    nisn:   user.nisn   || "",
+    nis:    user.nis    || "",
     nama:   user.name,
     kelas:  user.kelas,
     gender: user.gender || "",
@@ -89,8 +115,8 @@ const todayKey = () => {
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 };
 const fmtDate = k => {
-  const [y,m,dd] = k.split("-");
-  return parseInt(dd)+" "+MONTHS[parseInt(m)-1]+" "+y;
+  const [y,m,dd] = k.split("-").map(Number);
+  return dd+" "+MONTHS[m-1]+" "+y;
 };
 const daysInMonth = (y,m) => new Date(y,m+1,0).getDate();
 
@@ -443,15 +469,27 @@ function Jurnal({ user, journals, setJournals, initDate }) {
     setTimeout(() => setSaved(false), 3000);
   }
 
+  function shiftDate(str, delta) {
+    // Manipulasi tanggal tanpa timezone issue
+    const [y, m, dd] = str.split("-").map(Number);
+    const d = new Date(y, m-1, dd + delta); // bulan 0-index, tidak ada timezone shift
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+
   function prevDay() {
     if (hasDraft && !window.confirm("Ada perubahan yang belum disimpan. Lanjutkan?")) return;
-    const d = new Date(date+"T00:00:00"); d.setDate(d.getDate()-1);
-    setDate(d.toISOString().split("T")[0]); setOpen(null); setDraft({});
+    setDate(prev => shiftDate(prev, -1));
+    setOpen(null);
+    setDraft({});
   }
   function nextDay() {
     if (hasDraft && !window.confirm("Ada perubahan yang belum disimpan. Lanjutkan?")) return;
-    const d = new Date(date+"T00:00:00"); d.setDate(d.getDate()+1);
-    if (d <= new Date()) { setDate(d.toISOString().split("T")[0]); setOpen(null); setDraft({}); }
+    const next = shiftDate(date, +1);
+    if (next <= todayKey()) {
+      setDate(next);
+      setOpen(null);
+      setDraft({});
+    }
   }
 
   return (
