@@ -625,10 +625,8 @@ function downloadCSV(user, journals, y, mo) {
   const students= SISWA_LIST.filter(s => s.kelas === user.kelas);
   const bulan   = MONTHS[mo];
 
-  // Build header
-  const hCols = HABITS.map(h => h.label);
-  const headers = ["No","NIS","Nama","L/P","Hari Terisi","Rata-rata (%)","Badge",
-    ...hCols.map(h => h+" (hari)"), "Catatan"];
+  const headers = ["No","NISN","NIS","Nama Siswa","L/P","Hari Terisi","Rata-rata (%)","Badge",
+    ...HABITS.map(h => h.label+" (hari)"), "Keterangan"];
   const rows = [headers];
 
   students.forEach((st, idx) => {
@@ -650,13 +648,14 @@ function downloadCSV(user, journals, y, mo) {
       });
       return cnt;
     });
-    const catatan = avg2>=80?"Sangat Baik":avg2>=70?"Baik":avg2>=50?"Cukup":"Perlu Bimbingan";
-    rows.push([idx+1, st.nisn, st.nis, st.name, st.gender, fil, avg2, b2.lbl.replace(/[🏆🥈🥉💪]/g,"").trim(), ...hd, catatan]);
+    const ket = avg2>=80?"Sangat Baik":avg2>=70?"Baik":avg2>=50?"Cukup":"Perlu Bimbingan";
+    rows.push([idx+1, st.nisn, st.nis, st.name, st.gender, fil, avg2, b2.lbl.replace(/[^\w\s]/g,"").trim(), ...hd, ket]);
   });
 
-  const csv = rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(",")).join("
-");
-  const BOM  = "﻿";
+  const sep = ",";
+  const nl  = "\r\n";
+  const csv = rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(sep)).join(nl);
+  const BOM  = "\uFEFF";
   const blob = new Blob([BOM+csv], { type:"text/csv;charset=utf-8;" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
