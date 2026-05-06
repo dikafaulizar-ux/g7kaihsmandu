@@ -118,7 +118,7 @@ const INP = { width:"100%", border:"2px solid #D1FAE5", borderRadius:10, padding
               fontFamily:"Nunito,sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" };
 
 /* ── LOGIN ─────────────────────────────────────────────────── */
-function Login({ onLogin }) {
+function Login({ onLogin, siswaList, guruList }) {
   const [role, setRole] = useState("siswa");
   const [val,  setVal]  = useState("");
   const [err,  setErr]  = useState("");
@@ -128,11 +128,11 @@ function Login({ onLogin }) {
     const v = val.trim();
     if (!v) return setErr("Harap isi kolom di bawah.");
     if (role === "siswa") {
-      const u = SISWA_LIST.find(s => s.nisn === v);
+      const u = (siswaList||[]).find(s => s.nisn === v);
       if (!u) return setErr('NIS "'+v+'" tidak ditemukan. Pastikan NIS sudah benar.');
       onLogin(u);
     } else {
-      const u = GURU_LIST.find(g => g.name.toLowerCase() === v.toLowerCase());
+      const u = (guruList||[]).find(g => g.name.toLowerCase() === v.toLowerCase());
       if (!u) return setErr('Nama "'+v+'" tidak ditemukan. Tulis nama lengkap.');
       onLogin(u);
     }
@@ -678,9 +678,9 @@ function HInput({ h, v, upd }) {
 }
 
 /* ── DOWNLOAD REKAP CSV ────────────────────────────────────── */
-function downloadCSV(user, journals, y, mo) {
+function downloadCSV(user, journals, y, mo, siswaList) {
   const days    = daysInMonth(y, mo);
-  const students= SISWA_LIST.filter(s => s.kelas === user.kelas);
+  const students= (siswaList||[]).filter(s => s.kelas === user.kelas);
   const bulan   = MONTHS[mo];
 
   const headers = ["No","NISN","NIS","Nama Siswa","L/P","Hari Terisi","Rata-rata (%)","Badge",
@@ -723,9 +723,9 @@ function downloadCSV(user, journals, y, mo) {
   URL.revokeObjectURL(url);
 }
 
-function downloadHTML(user, journals, y, mo) {
+function downloadHTML(user, journals, y, mo, siswaList) {
   const days     = daysInMonth(y, mo);
-  const students = SISWA_LIST.filter(s => s.kelas === user.kelas);
+  const students = (siswaList||[]).filter(s => s.kelas === user.kelas);
   const bulan    = MONTHS[mo];
 
   const statsRows = students.map((st, idx) => {
@@ -850,7 +850,7 @@ function downloadHTML(user, journals, y, mo) {
 function Kelas({ user, journals, siswaList }) {
   const now=new Date(), y=now.getFullYear(), mo=now.getMonth();
   const days    = daysInMonth(y, mo);
-  const students= SISWA_LIST.filter(s => s.kelas === user.kelas);
+  const students= (siswaList||[]).filter(s => s.kelas === user.kelas);
   const bulan   = MONTHS[mo];
 
   // Summary stats
@@ -892,14 +892,14 @@ function Kelas({ user, journals, siswaList }) {
         <p style={{ fontWeight:900, fontSize:13, color:TX, margin:"0 0 4px" }}>📥 Download Rekap Laporan</p>
         <p style={{ fontSize:11, color:MU, margin:"0 0 12px" }}>Unduh laporan pengisian jurnal siswa kelas {user.kelas} bulan {bulan} {y}</p>
         <div style={{ display:"flex", gap:9 }}>
-          <button onClick={() => downloadHTML(user, journals, y, mo)}
+          <button onClick={() => downloadHTML(user, journals, y, mo, siswaList)}
             style={{ flex:1, padding:"11px 0", border:"none", borderRadius:11,
               fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:13, cursor:"pointer", color:"#fff",
               background:"linear-gradient(90deg,"+G+","+T+")",
               display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
             📄 Laporan HTML
           </button>
-          <button onClick={() => downloadCSV(user, journals, y, mo)}
+          <button onClick={() => downloadCSV(user, journals, y, mo, siswaList)}
             style={{ flex:1, padding:"11px 0", border:"2px solid "+G, borderRadius:11,
               fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:13, cursor:"pointer", color:G,
               background:"#fff",
