@@ -44,7 +44,7 @@ const HABITS = [
 
 // ── GOOGLE SHEETS API ───────────────────────────────────────────
 // Ganti URL ini setelah deploy Apps Script
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxkcHniHqoJFOInV5ApZ9OGT0c5uJw_qVOwvq-uoigLDDVsy7EfoxRXhMtsl1gHDACY/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzWAxzh7BWrPQhOtL77ooVQ1gqA8WxRv-I5iBuG8PxIoyT1C9_IWsHb59H3xMcgcXUJ/exec";
 
 async function gasRequest(action, body={}) {
   try {
@@ -123,14 +123,28 @@ const daysInMonth = (y,m) => new Date(y,m+1,0).getDate();
 function calcScore(e) {
   if (!e) return 0;
   let s = 0;
-  if (e.bangun) s++;
-  if (e.ibadah) s += Math.min(1, Object.values(e.ibadah).filter(Boolean).length / 5);
-  if (e.olahraga) s++;
-  if (e.makan) s += Math.min(1, ["P","S","M"].filter(k => e.makan[k] && e.makan[k].trim()).length / 3);
-  if (e.belajar) s++;
-  if (e.masyarakat) s++;
-  if (e.tidur) s++;
-  return Math.round(s / 7 * 100);
+  // Bangun pagi
+  if (e.bangun && String(e.bangun).trim()) s++;
+  // Ibadah - hitung berapa sholat yang dicentang (maks 1 poin)
+  if (e.ibadah && typeof e.ibadah === "object") {
+    const cnt = Object.values(e.ibadah).filter(Boolean).length;
+    if (cnt > 0) s += Math.min(1, cnt / 5);
+  }
+  // Olahraga
+  if (e.olahraga && String(e.olahraga).trim()) s++;
+  // Makan - hitung berapa waktu makan yang diisi (maks 1 poin)
+  if (e.makan && typeof e.makan === "object") {
+    const cnt = ["P","S","M"].filter(k => e.makan[k] && String(e.makan[k]).trim()).length;
+    if (cnt > 0) s += Math.min(1, cnt / 3);
+  }
+  // Belajar
+  if (e.belajar && String(e.belajar).trim()) s++;
+  // Bermasyarakat
+  if (e.masyarakat && String(e.masyarakat).trim()) s++;
+  // Tidur
+  if (e.tidur && String(e.tidur).trim()) s++;
+  // s max = 7, return 0-100
+  return Math.min(100, Math.round(s / 7 * 100));
 }
 
 function getBadge(sc) {
