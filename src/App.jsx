@@ -101,13 +101,37 @@ async function apiSaveJurnal(user, tanggal, entry) {
 async function apiGetJurnal(user) {
   // URL sudah terpasang
   const res = await gasRequest("getJurnal", { nis: user.nis, nisn: user.nisn });
-  return res.status==="ok" ? res.data : {};
+  if (res.status !== "ok") return {};
+  // Normalize semua tanggal
+  const normalized = {};
+  Object.entries(res.data||{}).forEach(([tgl, entry]) => {
+    const normTgl = normalizeDateKey(tgl);
+    if (normTgl) normalized[normTgl] = entry;
+  });
+  return normalized;
 }
 
 async function apiGetAllJurnal(kelas) {
   // URL sudah terpasang
   const res = await gasRequest("getAllJurnal", { kelas });
   return res.status==="ok" ? res.data : {};
+}
+
+// Normalize tanggal ke YYYY-MM-DD (handle berbagai format dari Sheets)
+function normalizeDateKey(val) {
+  if (!val) return "";
+  const str = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // Handle tanggal yang diawali apostrop (dari Sheets)
+  const cleaned = str.startsWith("'") ? str.slice(1) : str;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return cleaned;
+  try {
+    const d = new Date(cleaned);
+    if (!isNaN(d.getTime())) {
+      return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    }
+  } catch(e) {}
+  return str;
 }
 
 const todayKey = () => {
@@ -266,9 +290,16 @@ function Beranda({ user, journals, goJurnal, siswaList, refreshJournals }) {
 
   let tot=0, fil=0;
   const daySc=[];
+  // Build normalized journal lookup
+  const myJNorm = {};
+  Object.entries(myJ).forEach(([tgl,entry]) => {
+    const nt = normalizeDateKey(tgl);
+    if (nt) myJNorm[nt] = entry;
+  });
   for (let dd=1; dd<=days; dd++) {
     const k = y+"-"+String(mo+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
-    const sc = myJ[k] ? calcScore(myJ[k]) : null;
+    const entry = myJNorm[k] || null;
+    const sc = entry ? calcScore(entry) : null;
     if (sc!==null) { tot+=sc; fil++; }
     daySc.push({ dd, sc, k });
   }
@@ -276,19 +307,28 @@ function Beranda({ user, journals, goJurnal, siswaList, refreshJournals }) {
   const b   = getBadge(avg);
   const todSc = calcScore(myJ[tk]);
   const todE  = myJ[tk];
+  // Build normalized lookup untuk streak
+  const myJNormB = {};
+  Object.entries(myJ).forEach(([tgl,entry]) => {
+    const nt = normalizeDateKey(tgl);
+    if (nt) myJNormB[nt] = entry;
+  });
   let streak = 0;
   for (let dd=now.getDate(); dd>=1; dd--) {
     const k = y+"-"+String(mo+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
-    if (myJ[k] && calcScore(myJ[k])>0) streak++; else break;
+    if (myJNormB[k] && calcScore(myJNormB[k])>0) streak++; else break;
   }
 
   const hPct = HABITS.map(h => {
     let cnt=0;
-    Object.values(myJ).forEach(e => {
+    const pfxH = y+"-"+String(mo+1).padStart(2,"0");
+    Object.entries(myJ).forEach(([tgl,e]) => {
+      const nt=normalizeDateKey(tgl);
+      if(!nt||!nt.startsWith(pfxH)) return;
       const v=e[h.id]; if(!v) return;
       if(h.type==="sholat") { if(Object.values(v).some(Boolean)) cnt++; }
-      else if(h.type==="makan") { if(["P","S","M"].some(k=>v[k]&&v[k].trim())) cnt++; }
-      else cnt++;
+      else if(h.type==="makan") { if(["P","S","M"].some(k=>v[k]&&String(v[k]).trim())) cnt++; }
+      else if(String(v).trim()) cnt++;
     });
     return { ...h, pct: fil>0 ? Math.round(cnt/fil*100) : 0 };
   });
@@ -461,7 +501,13 @@ function Jurnal({ user, journals, setJournals, initDate }) {
 
   const isToday = date === todayKey();
   const myJ     = journals[user.id] || {};
-  const entry   = myJ[date] || {};
+  // Normalize semua tanggal di myJ untuk lookup yang akurat
+  const myJNorm = {};
+  Object.entries(myJ).forEach(([tgl,e]) => {
+    const nt = normalizeDateKey(tgl);
+    if (nt) myJNorm[nt] = e;
+  });
+  const entry = myJNorm[date] || myJ[date] || {};
 
   // Gabung entry tersimpan + draft yang belum disimpan
   const current = { ...entry, ...draft };
@@ -758,10 +804,11 @@ function downloadCSV(user, journals, y, mo, siswaList) {
   students.forEach((st, idx) => {
     const myJ = journals[st.id] || {};
     let tot=0, fil=0;
-    for (let dd=1; dd<=days; dd++) {
-      const k = y+"-"+String(mo+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
-      if (myJ[k]) { tot+=calcScore(myJ[k]); fil++; }
-    }
+    const monthPfx = y+"-"+String(mo+1).padStart(2,"0");
+    Object.entries(myJ).forEach(([tgl,entry]) => {
+      const nt = normalizeDateKey(tgl);
+      if (nt && nt.startsWith(monthPfx) && entry) { tot+=calcScore(entry); fil++; }
+    });
     const avg2 = fil>0 ? Math.round(tot/fil) : 0;
     const b2   = getBadge(avg2);
     const hd   = HABITS.map(h => {
@@ -802,10 +849,11 @@ function downloadPDF(user, journals, y, mo, siswaList) {
   const rows = students.map((st, idx) => {
     const myJ = journals[st.id] || {};
     let tot=0, fil=0;
-    for (let dd=1; dd<=days; dd++) {
-      const k = y+"-"+String(mo+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
-      if (myJ[k]) { tot+=calcScore(myJ[k]); fil++; }
-    }
+    const monthPfx = y+"-"+String(mo+1).padStart(2,"0");
+    Object.entries(myJ).forEach(([tgl,entry]) => {
+      const nt = normalizeDateKey(tgl);
+      if (nt && nt.startsWith(monthPfx) && entry) { tot+=calcScore(entry); fil++; }
+    });
     const avg2 = fil>0 ? Math.round(tot/fil) : 0;
     const ket  = avg2>=80?"Sangat Baik":avg2>=70?"Baik":avg2>=50?"Cukup":"Perlu Bimbingan";
     const clr  = avg2>=80?"#15803D":avg2>=70?"#2563EB":avg2>=50?"#F59E0B":"#EF4444";
@@ -922,7 +970,11 @@ function Kelas({ user, journals, siswaList, refreshJournals, deleteJurnal }) {
   const allAvg = students.reduce((acc,st)=>{
     const myJ=journals[st.id]||{};
     let tot=0,fil=0;
-    for(let dd=1;dd<=days;dd++){const k=y+"-"+String(mo+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");if(myJ[k]){tot+=calcScore(myJ[k]);fil++;}}
+    const pfx=y+"-"+String(mo+1).padStart(2,"0");
+    Object.entries(myJ).forEach(([tgl,entry])=>{
+      const nt=normalizeDateKey(tgl);
+      if(nt&&nt.startsWith(pfx)&&entry){tot+=calcScore(entry);fil++;}
+    });
     return acc+(fil>0?Math.round(tot/fil):0);
   },0);
   const classAvg = students.length>0 ? Math.round(allAvg/students.length) : 0;
@@ -988,19 +1040,26 @@ function Kelas({ user, journals, siswaList, refreshJournals, deleteJurnal }) {
       {students.map(st => {
         const myJ = journals[st.id] || {};
         let tot=0, fil=0;
-        for (let dd=1; dd<=days; dd++) {
-          const k = y+"-"+String(mo+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
-          if (myJ[k]) { tot+=calcScore(myJ[k]); fil++; }
-        }
+        // Filter jurnal bulan ini saja
+        const monthPrefix = y+"-"+String(mo+1).padStart(2,"0");
+        Object.entries(myJ).forEach(([tgl, entry]) => {
+          const normTgl = normalizeDateKey(tgl);
+          if (normTgl && normTgl.startsWith(monthPrefix) && entry) {
+            tot += calcScore(entry); fil++;
+          }
+        });
         const avg2 = fil>0 ? Math.round(tot/fil) : 0;
         const b2   = getBadge(avg2);
+        const monthPfxHd = y+"-"+String(mo+1).padStart(2,"0");
         const hd   = HABITS.map(h => {
           let cnt=0;
-          Object.values(myJ).forEach(e => {
+          Object.entries(myJ).forEach(([tgl,e]) => {
+            const nt=normalizeDateKey(tgl);
+            if(!nt||!nt.startsWith(monthPfxHd)) return;
             const vv=e[h.id]; if(!vv) return;
             if(h.type==="sholat") { if(Object.values(vv).some(Boolean)) cnt++; }
-            else if(h.type==="makan") { if(["P","S","M"].some(k2=>vv[k2]&&vv[k2].trim())) cnt++; }
-            else cnt++;
+            else if(h.type==="makan") { if(["P","S","M"].some(k2=>vv[k2]&&String(vv[k2]).trim())) cnt++; }
+            else if(String(vv).trim()) cnt++;
           });
           return cnt;
         });
@@ -1416,11 +1475,16 @@ export default function App() {
       const mapped = {};
       Object.entries(data).forEach(([key, jurnals]) => {
         const siswa = (swList||siswaList).find(s => s.nisn === key || s.nis === key);
+        // Normalize semua tanggal di jurnal
+        const normalizedJurnals = {};
+        Object.entries(jurnals).forEach(([tgl, entry]) => {
+          const normTgl = normalizeDateKey(tgl);
+          if (normTgl) normalizedJurnals[normTgl] = entry;
+        });
         if (siswa) {
-          mapped[siswa.id] = jurnals;
+          mapped[siswa.id] = normalizedJurnals;
         } else {
-          // Kalau tidak ketemu, simpan dengan key asli supaya tidak hilang
-          mapped["raw_"+key] = jurnals;
+          mapped["raw_"+key] = normalizedJurnals;
         }
       });
       console.log("Mapped journals:", Object.keys(mapped).length, "siswa");
