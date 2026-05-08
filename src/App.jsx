@@ -1093,8 +1093,7 @@ function AdminSiswa({ siswaList, setSiswaList, guruList }) {
   }
 
   function doDelete(st) {
-    if (!window.confirm("Hapus siswa "+st.name+"?
-Data jurnal siswa ini TIDAK ikut terhapus.")) return;
+    if (!window.confirm("Hapus siswa "+st.name+"?\nData jurnal siswa ini TIDAK ikut terhapus.")) return;
     setSiswaList(siswaList.filter(s => s.id !== st.id));
     gasRequest("deleteMasterSiswa", { nisn: st.nisn, nis: st.nis });
     setMsg("✅ Data siswa "+st.name+" dihapus dari daftar.");
@@ -1428,11 +1427,7 @@ export default function App() {
 
   // ── HAPUS DATA JURNAL SISWA ───────────────────────────────────
   async function deleteJurnal(siswaId, nis, nisn) {
-    const konfirm = window.confirm(
-      "Yakin ingin menghapus SEMUA data jurnal siswa ini?
-
-Tindakan ini tidak bisa dibatalkan!"
-    );
+    const konfirm = window.confirm("Yakin ingin menghapus SEMUA data jurnal siswa ini?\nTindakan ini tidak bisa dibatalkan!");
     if (!konfirm) return;
     try {
       // Hapus dari state lokal
