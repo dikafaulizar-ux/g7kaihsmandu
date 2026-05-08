@@ -1018,14 +1018,13 @@ function Kelas({ user, journals, siswaList, refreshJournals, deleteJurnal }) {
               <div style={{ width:avg2+"%", height:"100%", background:"linear-gradient(90deg,"+G+","+T+")", borderRadius:99 }}/>
             </div>
             {/* Tombol Hapus Data */}
-            {fil > 0 && (
-              <button onClick={() => deleteJurnal && deleteJurnal(st.id, st.nis, st.nisn)}
-                style={{ marginTop:8, width:"100%", padding:"6px 0", border:"1px solid #FCA5A5",
-                  borderRadius:8, fontFamily:"Nunito,sans-serif", fontWeight:700, fontSize:11,
-                  cursor:"pointer", color:"#DC2626", background:"#FEF2F2" }}>
-                🗑️ Hapus Data Jurnal Siswa Ini
-              </button>
-            )}
+            <button onClick={() => deleteJurnal && deleteJurnal(st.id, st.nis, st.nisn)}
+              style={{ marginTop:8, width:"100%", padding:"7px 0", border:"1px solid #FCA5A5",
+                borderRadius:8, fontFamily:"Nunito,sans-serif", fontWeight:700, fontSize:11,
+                cursor:"pointer", color:"#DC2626", background:"#FEF2F2",
+                opacity: fil>0 ? 1 : 0.4 }}>
+              🗑️ {fil>0 ? "Hapus Data Jurnal Siswa Ini" : "Belum Ada Data Jurnal"}
+            </button>
           </div>
         );
       })}
