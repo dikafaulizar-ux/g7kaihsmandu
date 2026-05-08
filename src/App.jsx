@@ -44,7 +44,7 @@ const HABITS = [
 
 // ── GOOGLE SHEETS API ───────────────────────────────────────────
 // Ganti URL ini setelah deploy Apps Script
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwOH2qsKhmZhHueOhASuw8xMj4x8fOT8L7zZ95qI8jNc0rqhM-cbCWwUq_4MplcTSs/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxkcHniHqoJFOInV5ApZ9OGT0c5uJw_qVOwvq-uoigLDDVsy7EfoxRXhMtsl1gHDACY/exec";
 
 async function gasRequest(action, body={}) {
   try {
@@ -156,8 +156,11 @@ function Login({ onLogin, siswaList, guruList }) {
     if (!v) return setErr("Harap isi kolom di bawah.");
     if (role === "siswa") {
       const u = (siswaList||[]).find(s => s.nisn === v);
-      if (!u) return setErr('NIS "'+v+'" tidak ditemukan. Pastikan NIS sudah benar.');
+      if (!u) return setErr('NISN "'+v+'" tidak ditemukan. Pastikan NISN sudah benar.');
       onLogin(u);
+    } else if (role === "admin") {
+      if (v !== "g7kaih@sman2") return setErr("Password admin salah!");
+      onLogin({ id:"admin", name:"Administrator", role:"admin", kelas:"-" });
     } else {
       const u = (guruList||[]).find(g => g.name.toLowerCase() === v.toLowerCase());
       if (!u) return setErr('Nama "'+v+'" tidak ditemukan. Tulis nama lengkap.');
@@ -190,10 +193,10 @@ function Login({ onLogin, siswaList, guruList }) {
         </div>
 
         <div style={{ display:"flex", background:"#F0FDF4", borderRadius:11, padding:3, marginBottom:14 }}>
-          {[["siswa","👦 Siswa"],["guru","👩‍🏫 Guru"]].map(([r,lbl]) => (
+          {[["siswa","👦 Siswa"],["guru","👩‍🏫 Guru"],["admin","⚙️ Admin"]].map(([r,lbl]) => (
             <button key={r} onClick={() => { setRole(r); setVal(""); setErr(""); }}
               style={{ flex:1, padding:"10px 0", border:"none", borderRadius:9,
-                fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:14, cursor:"pointer",
+                fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:13, cursor:"pointer",
                 background:role===r?"#fff":"transparent", color:role===r?G:MU,
                 boxShadow:role===r?"0 1px 6px rgba(0,0,0,0.1)":"none" }}>{lbl}</button>
           ))}
@@ -201,10 +204,15 @@ function Login({ onLogin, siswaList, guruList }) {
 
         <label style={{ display:"block", fontSize:11, fontWeight:800, color:MU, marginBottom:5,
           textTransform:"uppercase", letterSpacing:.5 }}>
-          {role==="siswa" ? "Nomor Induk Siswa Nasional (NISN)" : "Nama Lengkap Guru / Wali Kelas"}
+          {role==="siswa" ? "Nomor Induk Siswa Nasional (NISN)"
+            : role==="admin" ? "Password Admin"
+            : "Nama Lengkap Guru / Wali Kelas"}
         </label>
         <input style={{ ...INP, fontSize:16, padding:"12px 14px" }}
-          placeholder={role==="siswa" ? "Ketik NISN kamu, contoh: 3092221783" : "Ketik nama lengkap, contoh: Ruhina"}
+          type={role==="admin" ? "password" : "text"}
+          placeholder={role==="siswa" ? "Ketik NISN kamu, contoh: 3092221783"
+            : role==="admin" ? "Masukkan password admin..."
+            : "Ketik nama lengkap, contoh: Ruhina"}
           value={val} onChange={e => setVal(e.target.value)}
           onKeyDown={e => e.key==="Enter" && go()} autoFocus/>
 
@@ -769,12 +777,15 @@ function downloadCSV(user, journals, y, mo, siswaList) {
   URL.revokeObjectURL(url);
 }
 
-function downloadHTML(user, journals, y, mo, siswaList) {
+/* ── KELAS (Guru) ──────────────────────────────────────────── */
+
+function downloadPDF(user, journals, y, mo, siswaList) {
+  // Buat HTML khusus print → PDF via browser print dialog
   const days     = daysInMonth(y, mo);
   const students = (siswaList||[]).filter(s => s.kelas === user.kelas);
   const bulan    = MONTHS[mo];
 
-  const statsRows = students.map((st, idx) => {
+  const rows = students.map((st, idx) => {
     const myJ = journals[st.id] || {};
     let tot=0, fil=0;
     for (let dd=1; dd<=days; dd++) {
@@ -782,7 +793,8 @@ function downloadHTML(user, journals, y, mo, siswaList) {
       if (myJ[k]) { tot+=calcScore(myJ[k]); fil++; }
     }
     const avg2 = fil>0 ? Math.round(tot/fil) : 0;
-    const b2   = getBadge(avg2);
+    const ket  = avg2>=80?"Sangat Baik":avg2>=70?"Baik":avg2>=50?"Cukup":"Perlu Bimbingan";
+    const clr  = avg2>=80?"#15803D":avg2>=70?"#2563EB":avg2>=50?"#F59E0B":"#EF4444";
     const hd   = HABITS.map(h => {
       let cnt=0;
       Object.values(myJ).forEach(e => {
@@ -793,107 +805,85 @@ function downloadHTML(user, journals, y, mo, siswaList) {
       });
       return cnt;
     });
-    const catColor = avg2>=80?"#15803D":avg2>=70?"#2563EB":avg2>=50?"#F59E0B":"#EF4444";
-    const catatan  = avg2>=80?"Sangat Baik":avg2>=70?"Baik":avg2>=50?"Cukup":"Perlu Bimbingan";
-    const barW     = avg2+"%";
-    return `
-      <tr>
-        <td>${idx+1}</td>
-        <td>${st.nisn}</td>
-        <td>${st.nis}</td>
-        <td style="text-align:left;font-weight:700">${st.name}</td>
-        <td>${st.gender}</td>
-        <td>${fil}/${days}</td>
-        <td><div style="display:flex;align-items:center;gap:6px">
-          <div style="width:60px;height:8px;background:#E5E7EB;border-radius:99px;overflow:hidden">
-            <div style="width:${barW};height:100%;background:${catColor};border-radius:99px"></div>
-          </div>
-          <strong style="color:${catColor}">${avg2}%</strong>
-        </div></td>
-        ${hd.map(n => `<td>${n}</td>`).join("")}
-        <td style="color:${catColor};font-weight:700">${catatan}</td>
-      </tr>`;
+    return `<tr>
+      <td>${idx+1}</td>
+      <td>${st.nisn||""}</td>
+      <td>${st.nis}</td>
+      <td style="text-align:left">${st.name}</td>
+      <td>${st.gender}</td>
+      <td>${fil}/${days}</td>
+      <td><b style="color:${clr}">${avg2}%</b></td>
+      ${hd.map(n=>`<td>${n}</td>`).join("")}
+      <td style="color:${clr};font-weight:700">${ket}</td>
+    </tr>`;
   }).join("");
 
-  const totalSiswa  = students.length;
-  const filledCount = students.filter(st => Object.keys(journals[st.id]||{}).length>0).length;
-  const allAvg      = students.reduce((acc,st)=>{
-    const myJ=journals[st.id]||{};
-    let tot=0,fil=0;
+  const totalSiswa = students.length;
+  const sudahIsi   = students.filter(st => Object.keys(journals[st.id]||{}).length>0).length;
+  const avgKelas   = totalSiswa>0 ? Math.round(students.reduce((a,st)=>{
+    const myJ=journals[st.id]||{}; let tot=0,fil=0;
     for(let dd=1;dd<=days;dd++){const k=y+"-"+String(mo+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");if(myJ[k]){tot+=calcScore(myJ[k]);fil++;}}
-    return acc+(fil>0?Math.round(tot/fil):0);
-  },0);
-  const classAvg = totalSiswa>0 ? Math.round(allAvg/totalSiswa) : 0;
+    return a+(fil>0?Math.round(tot/fil):0);
+  },0)/totalSiswa) : 0;
 
-  const html = `<!DOCTYPE html>
-<html lang="id">
-<head>
+  const win = window.open("","_blank");
+  win.document.write(`<!DOCTYPE html>
+<html lang="id"><head>
 <meta charset="UTF-8"/>
 <title>Rekap G7KAIH - Kelas ${user.kelas} - ${bulan} ${y}</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, sans-serif; padding: 20px; color: #0F2318; background:#f8fafb; }
-  .header { background: linear-gradient(135deg,#15803D,#0D9488); color:#fff; padding:20px 24px; border-radius:12px; margin-bottom:20px; display:flex; align-items:center; gap:20px; }
-  .header-text h1 { font-size:22px; font-weight:900; letter-spacing:1px; }
-  .header-text p  { font-size:12px; opacity:.85; margin-top:2px; }
-  .stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
-  .stat-card  { background:#fff; border-radius:10px; padding:14px; text-align:center; box-shadow:0 1px 8px rgba(0,0,0,.07); }
-  .stat-card .val { font-size:26px; font-weight:900; color:#15803D; }
-  .stat-card .lbl { font-size:11px; color:#6B7280; margin-top:3px; }
-  table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 8px rgba(0,0,0,.07); font-size:12px; }
-  th { background:#15803D; color:#fff; padding:9px 8px; text-align:center; font-size:11px; }
-  td { padding:8px; text-align:center; border-bottom:1px solid #F3F4F6; }
-  tr:hover td { background:#F0FDF4; }
-  tr:last-child td { border-bottom:none; }
-  .footer { margin-top:16px; text-align:center; font-size:11px; color:#9CA3AF; }
-  @media print { body{background:#fff;padding:10px} .header{print-color-adjust:exact;-webkit-print-color-adjust:exact} }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;font-size:11px;padding:15px;}
+  .header{background:#15803D;color:#fff;padding:14px 18px;border-radius:8px;margin-bottom:14px;}
+  .header h1{font-size:18px;font-weight:900;letter-spacing:1px;}
+  .header p{font-size:11px;opacity:.85;margin-top:2px;}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+  .stat{border:2px solid #D1FAE5;border-radius:8px;padding:10px;text-align:center;}
+  .stat .v{font-size:20px;font-weight:900;color:#15803D;}
+  .stat .l{font-size:10px;color:#6B7280;}
+  table{width:100%;border-collapse:collapse;font-size:10px;}
+  th{background:#15803D;color:#fff;padding:6px 4px;text-align:center;}
+  td{padding:5px 4px;text-align:center;border-bottom:1px solid #E5E7EB;}
+  tr:nth-child(even) td{background:#F0FDF4;}
+  .footer{margin-top:12px;text-align:center;font-size:10px;color:#9CA3AF;}
+  @media print{
+    body{padding:8px;}
+    @page{size:A4 landscape;margin:1cm;}
+    button{display:none!important;}
+  }
 </style>
-</head>
-<body>
+</head><body>
   <div class="header">
-    <div class="header-text">
-      <h1>G7KAIH — LAPORAN JURNAL KEBIASAAN</h1>
-      <p>SMA Negeri 2 Banda Aceh &nbsp;|&nbsp; Kelas ${user.kelas} &nbsp;|&nbsp; Wali Kelas: ${user.name}</p>
-      <p>Bulan: ${bulan} ${y} &nbsp;|&nbsp; Tanggal cetak: ${new Date().toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}</p>
-    </div>
+    <h1>G7KAIH — REKAP JURNAL KEBIASAAN</h1>
+    <p>SMA Negeri 2 Banda Aceh &nbsp;|&nbsp; Kelas ${user.kelas} &nbsp;|&nbsp; Wali Kelas: ${user.name}</p>
+    <p>Bulan: ${bulan} ${y} &nbsp;|&nbsp; Dicetak: ${new Date().toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}</p>
   </div>
-
-  <div class="stats-grid">
-    <div class="stat-card"><div class="val">${totalSiswa}</div><div class="lbl">Total Siswa</div></div>
-    <div class="stat-card"><div class="val">${filledCount}</div><div class="lbl">Sudah Mengisi</div></div>
-    <div class="stat-card"><div class="val">${classAvg}%</div><div class="lbl">Rata-rata Kelas</div></div>
+  <div class="stats">
+    <div class="stat"><div class="v">${totalSiswa}</div><div class="l">Total Siswa</div></div>
+    <div class="stat"><div class="v">${sudahIsi}</div><div class="l">Sudah Mengisi</div></div>
+    <div class="stat"><div class="v">${avgKelas}%</div><div class="l">Rata-rata Kelas</div></div>
   </div>
-
+  <button onclick="window.print()" style="margin-bottom:12px;padding:8px 18px;background:#15803D;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">
+    🖨️ Print / Save PDF
+  </button>
   <table>
-    <thead>
-      <tr>
-        <th>No</th><th>NISN</th><th>NIS</th><th>Nama Siswa</th><th>L/P</th>
-        <th>Hari Terisi</th><th>Rata-rata</th>
-        ${HABITS.map(h=>`<th>${h.icon}<br/>${h.label.replace("& ","&<br/>")}</th>`).join("")}
-        <th>Keterangan</th>
-      </tr>
-    </thead>
-    <tbody>${statsRows}</tbody>
+    <thead><tr>
+      <th>No</th><th>NISN</th><th>NIS</th><th style="text-align:left;min-width:120px">Nama Siswa</th>
+      <th>L/P</th><th>Hari</th><th>Rata²</th>
+      ${HABITS.map(h=>`<th>${h.icon}</th>`).join("")}
+      <th>Keterangan</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
   </table>
-
   <div class="footer">
-    <p>Laporan ini dibuat otomatis oleh sistem G7KAIH — Gerakan 7 Kebiasaan Anak Indonesia Hebat</p>
-    <p>SMA Negeri 2 Banda Aceh © ${y}</p>
+    <p>Laporan G7KAIH — Gerakan 7 Kebiasaan Anak Indonesia Hebat · SMA Negeri 2 Banda Aceh © ${y}</p>
   </div>
-</body>
-</html>`;
-
-  const blob = new Blob([html], { type:"text/html;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = "Laporan_G7KAIH_"+user.kelas.replace(/ /g,"_")+"_"+bulan+"_"+y+".html";
-  a.click();
-  URL.revokeObjectURL(url);
+  <script>setTimeout(()=>window.print(),500);</script>
+</body></html>`);
+  win.document.close();
 }
 
-/* ── KELAS (Guru) ──────────────────────────────────────────── */
-function Kelas({ user, journals, siswaList, refreshJournals }) {
+function Kelas({ user, journals, siswaList, refreshJournals, deleteJurnal }) {
   const now=new Date(), y=now.getFullYear(), mo=now.getMonth();
   const days    = daysInMonth(y, mo);
   const students= (siswaList||[]).filter(s => s.kelas === user.kelas);
@@ -902,9 +892,7 @@ function Kelas({ user, journals, siswaList, refreshJournals }) {
   const [lastRefresh, setLastRefresh] = useState(null);
 
   // Auto-refresh saat halaman kelas dibuka
-  useEffect(() => {
-    handleRefresh();
-  }, []);
+  useEffect(() => { handleRefresh(); }, []);
 
   async function handleRefresh() {
     if (!refreshJournals) return;
@@ -961,25 +949,24 @@ function Kelas({ user, journals, siswaList, refreshJournals }) {
       {/* ── TOMBOL DOWNLOAD ── */}
       <div style={{ ...CS, marginBottom:14, background:"linear-gradient(135deg,#F0FDF4,#E0F2FE)", border:"2px solid "+G+"30" }}>
         <p style={{ fontWeight:900, fontSize:13, color:TX, margin:"0 0 4px" }}>📥 Download Rekap Laporan</p>
-        <p style={{ fontSize:11, color:MU, margin:"0 0 12px" }}>Unduh laporan pengisian jurnal siswa kelas {user.kelas} bulan {bulan} {y}</p>
+        <p style={{ fontSize:11, color:MU, margin:"0 0 10px" }}>Kelas {user.kelas} · {bulan} {y}</p>
         <div style={{ display:"flex", gap:9 }}>
-          <button onClick={() => downloadHTML(user, journals, y, mo, siswaList)}
-            style={{ flex:1, padding:"11px 0", border:"none", borderRadius:11,
-              fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:13, cursor:"pointer", color:"#fff",
-              background:"linear-gradient(90deg,"+G+","+T+")",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-            📄 Laporan HTML
-          </button>
           <button onClick={() => downloadCSV(user, journals, y, mo, siswaList)}
             style={{ flex:1, padding:"11px 0", border:"2px solid "+G, borderRadius:11,
               fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:13, cursor:"pointer", color:G,
-              background:"#fff",
+              background:"#fff", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            📊 Excel/CSV
+          </button>
+          <button onClick={() => downloadPDF(user, journals, y, mo, siswaList)}
+            style={{ flex:1, padding:"11px 0", border:"none", borderRadius:11,
+              fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:13, cursor:"pointer",
+              color:"#fff", background:"linear-gradient(90deg,#DC2626,#B91C1C)",
               display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-            📊 Data Excel/CSV
+            📑 Download PDF
           </button>
         </div>
         <p style={{ fontSize:10, color:MU, margin:"8px 0 0", textAlign:"center" }}>
-          💡 File HTML bisa dibuka di browser &amp; dicetak sebagai PDF. File CSV bisa dibuka di Excel.
+          💡 PDF → langsung print · CSV → buka di Excel
         </p>
       </div>
 
@@ -1030,6 +1017,15 @@ function Kelas({ user, journals, siswaList, refreshJournals }) {
             <div style={{ background:"#F3F4F6", borderRadius:99, height:7, overflow:"hidden" }}>
               <div style={{ width:avg2+"%", height:"100%", background:"linear-gradient(90deg,"+G+","+T+")", borderRadius:99 }}/>
             </div>
+            {/* Tombol Hapus Data */}
+            {fil > 0 && (
+              <button onClick={() => deleteJurnal && deleteJurnal(st.id, st.nis, st.nisn)}
+                style={{ marginTop:8, width:"100%", padding:"6px 0", border:"1px solid #FCA5A5",
+                  borderRadius:8, fontFamily:"Nunito,sans-serif", fontWeight:700, fontSize:11,
+                  cursor:"pointer", color:"#DC2626", background:"#FEF2F2" }}>
+                🗑️ Hapus Data Jurnal Siswa Ini
+              </button>
+            )}
           </div>
         );
       })}
@@ -1038,6 +1034,312 @@ function Kelas({ user, journals, siswaList, refreshJournals }) {
           <div style={{ fontSize:48 }}>📭</div><p>Tidak ada siswa di kelas ini</p>
         </div>
       )}
+    </div>
+  );
+}
+
+
+/* ── ADMIN SISWA ───────────────────────────────────────────── */
+function AdminSiswa({ siswaList, setSiswaList, guruList }) {
+  const KELAS_LIST = [...new Set((guruList||[]).map(g => g.kelas))].sort();
+  const [search,   setSearch]   = useState("");
+  const [filter,   setFilter]   = useState("semua");
+  const [showForm, setShowForm] = useState(false);
+  const [editData, setEditData] = useState(null);
+  const [saving,   setSaving]   = useState(false);
+  const [msg,      setMsg]      = useState("");
+  const [form,     setForm]     = useState({ nisn:"", nis:"", name:"", gender:"L", kelas:"" });
+
+  const filtered = (siswaList||[]).filter(s => {
+    const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
+                        s.nisn.includes(search) || s.nis.includes(search);
+    const matchKelas  = filter==="semua" || s.kelas===filter;
+    return matchSearch && matchKelas;
+  });
+
+  function openAdd() {
+    setForm({ nisn:"", nis:"", name:"", gender:"L", kelas: KELAS_LIST[0]||"" });
+    setEditData(null);
+    setShowForm(true);
+    setMsg("");
+  }
+
+  function openEdit(st) {
+    setForm({ nisn:st.nisn, nis:st.nis, name:st.name, gender:st.gender, kelas:st.kelas });
+    setEditData(st);
+    setShowForm(true);
+    setMsg("");
+  }
+
+  async function doSave() {
+    if (!form.nisn||!form.nis||!form.name||!form.kelas) return setMsg("⚠️ Semua field wajib diisi!");
+    if (form.nisn.length !== 10) return setMsg("⚠️ NISN harus 10 digit!");
+    setSaving(true);
+    const newSiswa = { id:"s"+form.nis, nisn:form.nisn, nis:form.nis,
+                       name:form.name, gender:form.gender, kelas:form.kelas, role:"siswa" };
+    let newList;
+    if (editData) {
+      newList = siswaList.map(s => s.id===editData.id ? newSiswa : s);
+    } else {
+      if (siswaList.find(s => s.nisn===form.nisn)) { setSaving(false); return setMsg("⚠️ NISN sudah terdaftar!"); }
+      newList = [...siswaList, newSiswa];
+    }
+    setSiswaList(newList);
+    // Simpan ke Apps Script
+    await gasRequest("saveMasterSiswa", { data: JSON.stringify(newSiswa), mode: editData?"edit":"add" });
+    setSaving(false);
+    setMsg(editData ? "✅ Data siswa berhasil diperbarui!" : "✅ Siswa baru berhasil ditambahkan!");
+    setShowForm(false);
+  }
+
+  function doDelete(st) {
+    if (!window.confirm("Hapus siswa "+st.name+"?
+Data jurnal siswa ini TIDAK ikut terhapus.")) return;
+    setSiswaList(siswaList.filter(s => s.id !== st.id));
+    gasRequest("deleteMasterSiswa", { nisn: st.nisn, nis: st.nis });
+    setMsg("✅ Data siswa "+st.name+" dihapus dari daftar.");
+  }
+
+  return (
+    <div style={{ padding:"14px 14px 100px" }}>
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div>
+          <h3 style={{ fontWeight:900, fontSize:16, color:TX, margin:0 }}>👦 Kelola Data Siswa</h3>
+          <p style={{ fontSize:11, color:MU, margin:"2px 0 0" }}>Total: {(siswaList||[]).length} siswa</p>
+        </div>
+        <button onClick={openAdd}
+          style={{ background:"linear-gradient(90deg,"+G+","+T+")", color:"#fff", border:"none",
+            borderRadius:11, padding:"10px 16px", fontFamily:"Nunito,sans-serif", fontWeight:800,
+            fontSize:13, cursor:"pointer" }}>+ Tambah</button>
+      </div>
+
+      {msg && <div style={{ background:msg.startsWith("✅")?"#F0FDF4":"#FFFBEB",
+        border:"1px solid "+(msg.startsWith("✅")?G:"#F59E0B"), borderRadius:10,
+        padding:"10px 14px", fontSize:13, fontWeight:700, marginBottom:12,
+        color:msg.startsWith("✅")?G:"#92400E" }}>{msg}</div>}
+
+      {/* Search & Filter */}
+      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+        <input style={{ ...INP, flex:1, padding:"9px 12px" }}
+          placeholder="Cari nama, NISN, atau NIS..."
+          value={search} onChange={e=>setSearch(e.target.value)}/>
+        <select value={filter} onChange={e=>setFilter(e.target.value)}
+          style={{ ...INP, width:"auto", padding:"9px 10px", cursor:"pointer" }}>
+          <option value="semua">Semua Kelas</option>
+          {KELAS_LIST.map(k=><option key={k} value={k}>{k}</option>)}
+        </select>
+      </div>
+
+      {/* Form Tambah/Edit */}
+      {showForm && (
+        <div style={{ ...CS, marginBottom:14, border:"2px solid "+G }}>
+          <h4 style={{ fontWeight:900, margin:"0 0 14px", color:G }}>
+            {editData ? "✏️ Edit Data Siswa" : "➕ Tambah Siswa Baru"}
+          </h4>
+          {[
+            ["NISN (10 digit)","nisn","text","3092221783"],
+            ["NIS","nis","text","214708"],
+            ["Nama Lengkap","name","text","Nama Siswa"],
+          ].map(([lbl,key,type,ph])=>(
+            <div key={key} style={{ marginBottom:10 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:800, color:MU, marginBottom:4 }}>{lbl}</label>
+              <input style={INP} type={type} placeholder={ph}
+                value={form[key]} onChange={e=>setForm({...form,[key]:e.target.value})}/>
+            </div>
+          ))}
+          <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+            <div style={{ flex:1 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:800, color:MU, marginBottom:4 }}>Jenis Kelamin</label>
+              <select style={{ ...INP }} value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}>
+                <option value="L">L (Laki-laki)</option>
+                <option value="P">P (Perempuan)</option>
+              </select>
+            </div>
+            <div style={{ flex:2 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:800, color:MU, marginBottom:4 }}>Kelas</label>
+              <select style={{ ...INP }} value={form.kelas} onChange={e=>setForm({...form,kelas:e.target.value})}>
+                {KELAS_LIST.map(k=><option key={k} value={k}>{k}</option>)}
+              </select>
+            </div>
+          </div>
+          {msg && <p style={{ color:msg.startsWith("✅")?"#22C55E":"#F59E0B", fontSize:12, fontWeight:700 }}>{msg}</p>}
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={doSave} disabled={saving}
+              style={{ flex:1, padding:"11px 0", border:"none", borderRadius:10,
+                fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:14, cursor:"pointer",
+                color:"#fff", background:saving?"#9CA3AF":"linear-gradient(90deg,"+G+","+T+")" }}>
+              {saving?"⏳ Menyimpan...":"💾 Simpan"}
+            </button>
+            <button onClick={()=>setShowForm(false)}
+              style={{ flex:1, padding:"11px 0", border:"2px solid #E5E7EB", borderRadius:10,
+                fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:14, cursor:"pointer",
+                color:MU, background:"#fff" }}>Batal</button>
+          </div>
+        </div>
+      )}
+
+      {/* Daftar siswa */}
+      <p style={{ fontSize:11, color:MU, marginBottom:8 }}>Menampilkan {filtered.length} siswa</p>
+      {filtered.map(st => (
+        <div key={st.id} style={{ ...CS, marginBottom:9, padding:"12px 14px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:38,height:38,borderRadius:10,background:"#D1FAE5",
+              display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:16,color:G,flexShrink:0 }}>
+              {st.name[0]}
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:800, fontSize:14, color:TX }}>{st.name}</div>
+              <div style={{ fontSize:10, color:MU }}>NISN: {st.nisn} · NIS: {st.nis} · {st.gender}</div>
+              <div style={{ fontSize:10, color:G, fontWeight:700 }}>{st.kelas}</div>
+            </div>
+            <div style={{ display:"flex", gap:6 }}>
+              <button onClick={()=>openEdit(st)}
+                style={{ background:"#EFF6FF", color:"#2563EB", border:"none", borderRadius:8,
+                  padding:"6px 10px", fontFamily:"Nunito,sans-serif", fontWeight:700, fontSize:11, cursor:"pointer" }}>
+                ✏️ Edit
+              </button>
+              <button onClick={()=>doDelete(st)}
+                style={{ background:"#FEF2F2", color:"#DC2626", border:"none", borderRadius:8,
+                  padding:"6px 10px", fontFamily:"Nunito,sans-serif", fontWeight:700, fontSize:11, cursor:"pointer" }}>
+                🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+      {filtered.length===0&&<div style={{ textAlign:"center",padding:40,color:MU }}>
+        <div style={{ fontSize:40 }}>🔍</div><p>Tidak ada siswa ditemukan</p></div>}
+    </div>
+  );
+}
+
+/* ── ADMIN GURU ─────────────────────────────────────────────── */
+function AdminGuru({ guruList, setGuruList, siswaList }) {
+  const KELAS_LIST = [...new Set((siswaList||[]).map(s => s.kelas))].sort();
+  const [showForm, setShowForm] = useState(false);
+  const [editData, setEditData] = useState(null);
+  const [saving,   setSaving]   = useState(false);
+  const [msg,      setMsg]      = useState("");
+  const [form,     setForm]     = useState({ name:"", kelas:"" });
+
+  function openAdd() {
+    setForm({ name:"", kelas: KELAS_LIST[0]||"" });
+    setEditData(null); setShowForm(true); setMsg("");
+  }
+  function openEdit(g) {
+    setForm({ name:g.name, kelas:g.kelas });
+    setEditData(g); setShowForm(true); setMsg("");
+  }
+
+  async function doSave() {
+    if (!form.name||!form.kelas) return setMsg("⚠️ Nama dan kelas wajib diisi!");
+    setSaving(true);
+    const newGuru = {
+      id: editData ? editData.id : "g"+Date.now(),
+      name: form.name, role:"guru", kelas: form.kelas
+    };
+    let newList;
+    if (editData) {
+      newList = guruList.map(g => g.id===editData.id ? newGuru : g);
+    } else {
+      if (guruList.find(g => g.name.toLowerCase()===form.name.toLowerCase())) {
+        setSaving(false); return setMsg("⚠️ Nama guru sudah terdaftar!");
+      }
+      newList = [...guruList, newGuru];
+    }
+    setGuruList(newList);
+    await gasRequest("saveMasterGuru", { data: JSON.stringify(newGuru), mode: editData?"edit":"add" });
+    setSaving(false);
+    setMsg(editData ? "✅ Data guru berhasil diperbarui!" : "✅ Guru baru berhasil ditambahkan!");
+    setShowForm(false);
+  }
+
+  function doDelete(g) {
+    if (!window.confirm("Hapus guru "+g.name+"?")) return;
+    setGuruList(guruList.filter(x => x.id !== g.id));
+    gasRequest("deleteMasterGuru", { id: g.id, name: g.name });
+    setMsg("✅ "+g.name+" dihapus dari daftar guru.");
+  }
+
+  return (
+    <div style={{ padding:"14px 14px 100px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div>
+          <h3 style={{ fontWeight:900, fontSize:16, color:TX, margin:0 }}>👩‍🏫 Kelola Data Guru</h3>
+          <p style={{ fontSize:11, color:MU, margin:"2px 0 0" }}>Total: {(guruList||[]).length} guru / wali kelas</p>
+        </div>
+        <button onClick={openAdd}
+          style={{ background:"linear-gradient(90deg,"+G+","+T+")", color:"#fff", border:"none",
+            borderRadius:11, padding:"10px 16px", fontFamily:"Nunito,sans-serif", fontWeight:800,
+            fontSize:13, cursor:"pointer" }}>+ Tambah</button>
+      </div>
+
+      {msg && <div style={{ background:msg.startsWith("✅")?"#F0FDF4":"#FFFBEB",
+        border:"1px solid "+(msg.startsWith("✅")?G:"#F59E0B"), borderRadius:10,
+        padding:"10px 14px", fontSize:13, fontWeight:700, marginBottom:12,
+        color:msg.startsWith("✅")?G:"#92400E" }}>{msg}</div>}
+
+      {/* Form */}
+      {showForm && (
+        <div style={{ ...CS, marginBottom:14, border:"2px solid "+G }}>
+          <h4 style={{ fontWeight:900, margin:"0 0 14px", color:G }}>
+            {editData ? "✏️ Edit Data Guru" : "➕ Tambah Guru / Wali Kelas Baru"}
+          </h4>
+          <div style={{ marginBottom:10 }}>
+            <label style={{ display:"block", fontSize:11, fontWeight:800, color:MU, marginBottom:4 }}>Nama Lengkap</label>
+            <input style={INP} placeholder="Nama lengkap guru..."
+              value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:11, fontWeight:800, color:MU, marginBottom:4 }}>Kelas yang Diampu</label>
+            <select style={INP} value={form.kelas} onChange={e=>setForm({...form,kelas:e.target.value})}>
+              {KELAS_LIST.map(k=><option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+          {msg && <p style={{ color:msg.startsWith("✅")?"#22C55E":"#F59E0B", fontSize:12, fontWeight:700 }}>{msg}</p>}
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={doSave} disabled={saving}
+              style={{ flex:1, padding:"11px 0", border:"none", borderRadius:10,
+                fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:14, cursor:"pointer",
+                color:"#fff", background:saving?"#9CA3AF":"linear-gradient(90deg,"+G+","+T+")" }}>
+              {saving?"⏳ Menyimpan...":"💾 Simpan"}
+            </button>
+            <button onClick={()=>setShowForm(false)}
+              style={{ flex:1, padding:"11px 0", border:"2px solid #E5E7EB", borderRadius:10,
+                fontFamily:"Nunito,sans-serif", fontWeight:800, fontSize:14, cursor:"pointer",
+                color:MU, background:"#fff" }}>Batal</button>
+          </div>
+        </div>
+      )}
+
+      {/* Daftar guru */}
+      {(guruList||[]).map(g => (
+        <div key={g.id} style={{ ...CS, marginBottom:9, padding:"12px 14px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:38,height:38,borderRadius:10,background:"#D1FAE5",
+              display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:16,color:G,flexShrink:0 }}>
+              {g.name[0]}
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:800, fontSize:14, color:TX }}>{g.name}</div>
+              <div style={{ fontSize:10, color:G, fontWeight:700 }}>Wali Kelas: {g.kelas}</div>
+            </div>
+            <div style={{ display:"flex", gap:6 }}>
+              <button onClick={()=>openEdit(g)}
+                style={{ background:"#EFF6FF", color:"#2563EB", border:"none", borderRadius:8,
+                  padding:"6px 10px", fontFamily:"Nunito,sans-serif", fontWeight:700, fontSize:11, cursor:"pointer" }}>
+                ✏️ Edit
+              </button>
+              <button onClick={()=>doDelete(g)}
+                style={{ background:"#FEF2F2", color:"#DC2626", border:"none", borderRadius:8,
+                  padding:"6px 10px", fontFamily:"Nunito,sans-serif", fontWeight:700, fontSize:11, cursor:"pointer" }}>
+                🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1053,7 +1355,7 @@ export default function App() {
   const [guruList,  setGuruList] = useState([]);
   const [dataReady, setDataReady]= useState(false);
 
-  // Load data siswa & guru saat pertama buka (lazy)
+  // Load data siswa & guru saat pertama buka
   useEffect(() => {
     async function loadData() {
       try {
@@ -1073,6 +1375,7 @@ export default function App() {
     loadData();
   }, []);
 
+  // ── LOGIN ──────────────────────────────────────────────────────
   async function login(u) {
     setUser(u);
     setPage("beranda");
@@ -1080,42 +1383,83 @@ export default function App() {
     try {
       if (u.role === "siswa") {
         const data = await apiGetJurnal(u);
-        if (Object.keys(data).length > 0) {
-          setJournals(prev => ({ ...prev, [u.id]: data }));
+        if (data && Object.keys(data).length > 0) {
+          setJournals({ [u.id]: data });
         }
       } else {
-        const data = await apiGetAllJurnal(u.kelas);
-        const mapped = {};
-        Object.entries(data).forEach(([key, jurnals]) => {
-          // Coba match dengan NISN dulu, lalu NIS
-          const siswa = siswaList.find(s => s.nisn === key || s.nis === key);
-          if (siswa) mapped[siswa.id] = jurnals;
-        });
-        if (Object.keys(mapped).length > 0) setJournals(mapped);
+        // Guru: langsung load semua jurnal kelas
+        await loadGuruJournals(u, siswaList);
       }
-    } catch(e) { console.error(e); }
+    } catch(e) { console.error("Login error:", e); }
     setLoading(false);
   }
+
+  // ── LOAD JURNAL GURU ───────────────────────────────────────────
+  // Fungsi terpisah agar bisa dipanggil dengan parameter eksplisit
+  async function loadGuruJournals(guruUser, swList) {
+    try {
+      const res  = await gasRequest("getAllJurnal", { kelas: guruUser.kelas });
+      const data = res.status === "ok" ? res.data : {};
+      console.log("getAllJurnal result:", JSON.stringify(res).slice(0,200));
+      const mapped = {};
+      Object.entries(data).forEach(([key, jurnals]) => {
+        const siswa = (swList||siswaList).find(s => s.nisn === key || s.nis === key);
+        if (siswa) {
+          mapped[siswa.id] = jurnals;
+        } else {
+          // Kalau tidak ketemu, simpan dengan key asli supaya tidak hilang
+          mapped["raw_"+key] = jurnals;
+        }
+      });
+      console.log("Mapped journals:", Object.keys(mapped).length, "siswa");
+      setJournals(mapped);
+      return mapped;
+    } catch(e) {
+      console.error("loadGuruJournals error:", e);
+      return {};
+    }
+  }
+
+  // ── REFRESH (dipanggil dari Kelas) ────────────────────────────
+  async function refreshJournals() {
+    if (!user || user.role !== "guru") return;
+    return await loadGuruJournals(user, siswaList);
+  }
+
+  // ── HAPUS DATA JURNAL SISWA ───────────────────────────────────
+  async function deleteJurnal(siswaId, nis, nisn) {
+    const konfirm = window.confirm(
+      "Yakin ingin menghapus SEMUA data jurnal siswa ini?
+
+Tindakan ini tidak bisa dibatalkan!"
+    );
+    if (!konfirm) return;
+    try {
+      // Hapus dari state lokal
+      setJournals(prev => {
+        const next = { ...prev };
+        delete next[siswaId];
+        return next;
+      });
+      // Hapus dari Google Sheets
+      const res = await gasRequest("deleteJurnal", { nis, nisn });
+      if (res.status === "ok") {
+        alert("✅ Data jurnal siswa berhasil dihapus!");
+      } else {
+        alert("⚠️ Gagal hapus dari Google Sheets: " + (res.message||""));
+      }
+    } catch(e) {
+      console.error("Delete error:", e);
+      alert("❌ Terjadi error saat menghapus.");
+    }
+  }
+
   function logout()    { setUser(null); setPage("beranda"); setJournals({}); }
   function goJurnal(d) { setInitDate(d || todayKey()); setPage("jurnal"); }
 
-  // Guru: muat ulang semua jurnal kelas
-  async function refreshJournals() {
-    if (!user || user.role !== "guru") return;
-    try {
-      const data = await apiGetAllJurnal(user.kelas);
-      const mapped = {};
-      Object.entries(data).forEach(([key, jurnals]) => {
-        const siswa = siswaList.find(s => s.nisn === key || s.nis === key);
-        if (siswa) mapped[siswa.id] = jurnals;
-      });
-      if (Object.keys(mapped).length > 0) setJournals(mapped);
-    } catch(e) { console.error("Refresh error:", e); }
-  }
-
-  // Tampilkan loading screen saat data belum siap
+  // ── LOADING SCREEN ────────────────────────────────────────────
   if (!dataReady) return (
-    <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#15803D,#0D9488)",
+    <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,"+G+","+T+")",
       display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet"/>
       <img src="/logo.png" alt="Logo" style={{ width:90, height:90, marginBottom:16,
@@ -1127,11 +1471,9 @@ export default function App() {
       <div style={{ display:"flex", gap:8 }}>
         {[0,1,2].map(i => (
           <div key={i} style={{ width:10, height:10, borderRadius:"50%", background:"#fff",
-            animation:"pulse 1.2s ease-in-out "+i*0.2+"s infinite alternate",
             opacity:.5 }}/>
         ))}
       </div>
-      <style>{"@keyframes pulse{to{opacity:1;transform:scale(1.3)}}"}</style>
     </div>
   );
 
@@ -1139,6 +1481,8 @@ export default function App() {
 
   const tabs = user.role==="siswa"
     ? [{ id:"beranda", ic:"🏠", lb:"Beranda" }, { id:"jurnal", ic:"📓", lb:"Isi Jurnal" }]
+    : user.role==="admin"
+    ? [{ id:"admin_siswa", ic:"👦", lb:"Data Siswa" }, { id:"admin_guru", ic:"👩‍🏫", lb:"Data Guru" }]
     : [{ id:"beranda", ic:"🏠", lb:"Beranda" }, { id:"kelas",  ic:"👥", lb:"Kelas Saya" }];
 
   return (
@@ -1171,22 +1515,25 @@ export default function App() {
         </div>
       </div>
 
+      {/* LOADING OVERLAY */}
+      {loading && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", zIndex:999,
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"#fff", borderRadius:20, padding:"28px 36px", textAlign:"center" }}>
+            <div style={{ fontSize:40, marginBottom:10 }}>⏳</div>
+            <div style={{ fontWeight:900, fontSize:16, color:G }}>Memuat data jurnal...</div>
+            <div style={{ fontSize:12, color:MU, marginTop:4 }}>Mengambil data dari Google Sheets</div>
+          </div>
+        </div>
+      )}
+
       {/* CONTENT */}
       <div style={{ paddingBottom:80 }}>
-        {loading && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.35)", zIndex:999,
-            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-            <div style={{ background:"#fff", borderRadius:20, padding:"28px 36px", textAlign:"center",
-              boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>
-              <div style={{ fontSize:40, marginBottom:10 }}>⏳</div>
-              <div style={{ fontWeight:900, fontSize:16, color:G }}>Memuat data jurnal...</div>
-              <div style={{ fontSize:12, color:MU, marginTop:4 }}>Mengambil data dari Google Sheets</div>
-            </div>
-          </div>
-        )}
-        {page==="beranda" && <Beranda user={user} journals={journals} goJurnal={goJurnal} siswaList={siswaList} refreshJournals={refreshJournals}/>}
-        {page==="jurnal"  && user.role==="siswa" && <Jurnal user={user} journals={journals} setJournals={setJournals} initDate={initDate}/>}
-        {page==="kelas"   && user.role==="guru"  && <Kelas  user={user} journals={journals} siswaList={siswaList} refreshJournals={refreshJournals}/>}
+        {page==="beranda"     && user.role!=="admin" && <Beranda user={user} journals={journals} goJurnal={goJurnal} siswaList={siswaList} refreshJournals={refreshJournals}/>}
+        {page==="jurnal"      && user.role==="siswa" && <Jurnal user={user} journals={journals} setJournals={setJournals} initDate={initDate}/>}
+        {page==="kelas"       && user.role==="guru"  && <Kelas  user={user} journals={journals} siswaList={siswaList} refreshJournals={refreshJournals} deleteJurnal={deleteJurnal}/>}
+        {page==="admin_siswa" && user.role==="admin" && <AdminSiswa siswaList={siswaList} setSiswaList={setSiswaList} guruList={guruList}/>}
+        {page==="admin_guru"  && user.role==="admin" && <AdminGuru  guruList={guruList}  setGuruList={setGuruList}   siswaList={siswaList}/>}
       </div>
 
       {/* BOTTOM NAV */}
