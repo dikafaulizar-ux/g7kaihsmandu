@@ -248,9 +248,9 @@ function Login({ onLogin, siswaList, guruList }) {
         </label>
         <input style={{ ...INP, fontSize:16, padding:"12px 14px" }}
           type={role==="admin" ? "password" : "text"}
-          placeholder={role==="siswa" ? "Ketik NISN kamu, contoh: 3092221783"
+          placeholder={role==="siswa" ? "Masukkan NISN kamu..."
             : role==="admin" ? "Masukkan password admin..."
-            : "Ketik nama lengkap, contoh: Ruhina"}
+            : "Masukkan nama lengkap..."}
           value={val} onChange={e => setVal(e.target.value)}
           onKeyDown={e => e.key==="Enter" && go()} autoFocus/>
 
@@ -263,13 +263,7 @@ function Login({ onLogin, siswaList, guruList }) {
           Masuk →
         </button>
 
-        <div style={{ marginTop:12, padding:"10px 12px", background:"#F0FDF4",
-          borderRadius:9, fontSize:11, color:MU, borderLeft:"3px solid "+G }}>
-          <strong style={{ color:G }}>Contoh — </strong>
-          {role==="siswa"
-            ? "NISN: 3092221783 · 3106247910 · 3096166887 · 0109048832"
-            : "Nama: Ruhina / Herlina / Ani Afrah / Eva Ifrida"}
-        </div>
+
       </div>
     </div>
   );
